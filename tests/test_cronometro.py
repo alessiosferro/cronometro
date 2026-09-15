@@ -66,9 +66,9 @@ class FileOutputTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "studio.txt"
             first_start = datetime(2026, 9, 14, 17, 20, 45)
-            first_end = datetime(2026, 9, 14, 20, 20, 45)
+            first_end = datetime(2026, 9, 14, 20, 50, 45)
             second_start = datetime(2026, 9, 14, 21, 10, 0)
-            second_end = datetime(2026, 9, 14, 21, 35, 30)
+            second_end = datetime(2026, 9, 14, 21, 40, 30)
 
             cronometro.append_duration(path, first_start, 10800, 1800, first_end)
             cronometro.append_duration(path, second_start, 1530, 300, second_end)
@@ -78,8 +78,37 @@ class FileOutputTests(unittest.TestCase):
                 path.read_text(encoding="utf-8"),
                 f"{heading}\n"
                 f"{'=' * len(heading)}\n\n"
-                "17:20:45 - 03:00:00 - 00:30:00 - 20:20:45\n"
-                "21:10:00 - 00:25:30 - 00:05:00 - 21:35:30\n",
+                "Inizio   | Durata   | Pause    | Fine\n"
+                "---------+----------+----------+---------\n"
+                "17:20:45 | 03:00:00 | 00:30:00 | 20:50:45\n"
+                "21:10:00 | 00:25:30 | 00:05:00 | 21:40:30\n",
+            )
+
+    def test_table_header_is_added_after_entries_from_the_old_format(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "studio.txt"
+            heading = "Lunedì 14 Settembre 2026"
+            path.write_text(
+                f"{heading}\n"
+                f"{'=' * len(heading)}\n\n"
+                "09:00:00 - 01:00:00 - 00:10:00 - 10:10:00\n",
+                encoding="utf-8",
+            )
+
+            cronometro.append_duration(
+                path,
+                datetime(2026, 9, 14, 11, 0, 0),
+                3600,
+                600,
+                datetime(2026, 9, 14, 12, 10, 0),
+            )
+
+            contents = path.read_text(encoding="utf-8")
+            self.assertEqual(contents.count(cronometro.TABLE_HEADER), 1)
+            self.assertTrue(
+                contents.endswith(
+                    "11:00:00 | 01:00:00 | 00:10:00 | 12:10:00\n"
+                )
             )
 
     def test_existing_content_is_preserved(self):

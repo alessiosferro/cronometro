@@ -39,16 +39,21 @@ per ogni carattere:
 Lunedì 14 Settembre 2026
 ========================
 
-17:20:45 - 03:00:00 - 00:30:00 - 20:20:45
-21:10:00 - 00:25:30 - 00:05:00 - 21:35:30
+Inizio   | Durata   | Pause    | Fine
+---------+----------+----------+---------
+17:20:45 | 03:00:00 | 00:30:00 | 20:50:45
+21:10:00 | 00:25:30 | 00:05:00 | 21:40:30
 ```
 
-Ogni riga usa il formato
-`ora di partenza - durata effettiva - pause totali - ora di fine`, sempre con ore,
-minuti e secondi (`hh:mm:ss`). La durata effettiva esclude tutte le pause, mentre
-il terzo valore ne riporta la durata complessiva. Le frazioni di secondo vengono
-troncate e le ore delle durate possono superare 99. L'ora di partenza e quella di
-fine sono invece orari del giorno, rilevati dal computer.
+La tabella riporta ora di partenza, durata effettiva, pause totali e ora di fine,
+sempre con ore, minuti e secondi (`hh:mm:ss`). La durata effettiva esclude tutte
+le pause, mentre la colonna `Pause` ne riporta la durata complessiva. Le frazioni
+di secondo vengono troncate e le ore delle durate possono superare 99. L'ora di
+partenza e quella di fine sono invece orari del giorno, rilevati dal computer.
+
+I dati creati dalle versioni precedenti restano invariati. Quando il programma
+trova una giornata già presente nel vecchio formato, aggiunge sotto di essa
+l'intestazione della tabella prima della nuova sessione.
 
 L'intestazione viene scritta una sola volta per ogni data già presente nel file.
 Il programma conserva tutto il contenuto esistente e aggiunge le nuove sessioni

@@ -25,6 +25,8 @@ MONTHS = (
     "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
 )
+TABLE_HEADER = "Inizio   | Durata   | Pause    | Fine"
+TABLE_SEPARATOR = "---------+----------+----------+---------"
 
 
 def format_date(moment):
@@ -101,8 +103,8 @@ def append_duration(path, started_at, seconds, pause_seconds, ended_at):
     date_heading = format_date(ended_at)
     heading_block = f"{date_heading}\n{'=' * len(date_heading)}"
     time_entry = (
-        f"{started_at:%H:%M:%S} - {format_duration(seconds)} - "
-        f"{format_duration(pause_seconds)} - {ended_at:%H:%M:%S}"
+        f"{started_at:%H:%M:%S} | {format_duration(seconds)} | "
+        f"{format_duration(pause_seconds)} | {ended_at:%H:%M:%S}"
     )
 
     with path.open("a+b") as stream:
@@ -115,9 +117,17 @@ def append_duration(path, started_at, seconds, pause_seconds, ended_at):
                 addition += "\n"
             if existing and not (existing + addition).endswith("\n\n"):
                 addition += "\n"
-            addition += f"{heading_block}\n\n"
-        elif existing and not existing.endswith("\n"):
-            addition += "\n"
+            addition += (
+                f"{heading_block}\n\n{TABLE_HEADER}\n{TABLE_SEPARATOR}\n"
+            )
+        else:
+            current_section = existing[existing.rfind(heading_block):]
+            if existing and not existing.endswith("\n"):
+                addition += "\n"
+            if TABLE_HEADER not in current_section:
+                if existing and not (existing + addition).endswith("\n\n"):
+                    addition += "\n"
+                addition += f"{TABLE_HEADER}\n{TABLE_SEPARATOR}\n"
 
         stream.seek(0, 2)
         stream.write((addition + time_entry + "\n").encode("utf-8"))
