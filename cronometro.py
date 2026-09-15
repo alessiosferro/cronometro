@@ -51,6 +51,11 @@ TOTAL_ENTRY_RE = re.compile(
     r"(?P<pause>\d+:\d{2}:\d{2}) \|$",
     re.MULTILINE,
 )
+COMPLETION_BLOCK_RE = re.compile(
+    rf"^{re.escape(TABLE_TOTAL_SEPARATOR)}\n"
+    r"Totale\s+\| \d+:\d{2}:\d{2} \| \d+:\d{2}:\d{2} \|\n?",
+    re.MULTILINE,
+)
 DAILY_WORK_TOTAL_RE = re.compile(
     r"^Totale\s+\| (?P<work>\d+:\d{2}:\d{2}) \|",
     re.MULTILINE,
@@ -64,6 +69,22 @@ LEGACY_DAILY_TOTAL_RE = re.compile(
     re.MULTILINE,
 )
 SUMMARY_TITLE = "Somma totale delle ore lavorate"
+ASCII_ART = r"""
+   ___ ___  ___  _  _  ___  __  __ ___ _____ ___  ___
+  / __| _ \/ _ \| \| |/ _ \|  \/  | __|_   _| _ \/ _ \
+ | (__|   / (_) | .` | (_) | |\/| | _|  | | |   / (_) |
+  \___|_|_\___/|_|\_|\___/|_|  |_|___| |_| |_|_\___/
+""".strip("\n")
+
+START_COMMANDS = ("start", "avvia", "a")
+PAUSE_COMMANDS = ("pause", "pausa", "p")
+RESUME_COMMANDS = ("resume", "riprendi", "r")
+STOP_COMMANDS = ("stop", "s")
+STATUS_COMMANDS = ("status", "stato", "st")
+TODAY_COMMANDS = ("oggi", "giornata", "o")
+COMPLETE_COMMANDS = ("complete", "completa", "c")
+EXIT_COMMANDS = ("exit", "esci", "e", "q")
+HELP_COMMANDS = ("help", "aiuto", "h", "?")
 
 
 def format_date(moment):
@@ -209,10 +230,25 @@ def append_duration(path, started_at, seconds, pause_seconds, ended_at):
         f"{format_duration(pause_seconds)} | {ended_at:%H:%M:%S}"
     )
 
-    with path.open("a+b") as stream:
+    mode = "r+b" if path.exists() else "w+b"
+    with path.open(mode) as stream:
         stream.seek(0)
         existing = stream.read().decode("utf-8", errors="replace")
         addition = ""
+
+        heading_position = existing.rfind(heading_block)
+        if heading_position != -1:
+            current_section = existing[heading_position:]
+            previous_completion = COMPLETION_BLOCK_RE.search(current_section)
+            if previous_completion:
+                existing = (
+                    existing[:heading_position]
+                    + current_section[:previous_completion.start()]
+                    + current_section[previous_completion.end():]
+                )
+                stream.seek(0)
+                stream.write(existing.encode("utf-8"))
+                stream.truncate()
 
         if heading_block not in existing:
             if existing and not existing.endswith("\n"):
@@ -233,6 +269,36 @@ def append_duration(path, started_at, seconds, pause_seconds, ended_at):
 
         stream.seek(0, 2)
         stream.write((addition + time_entry + "\n").encode("utf-8"))
+
+
+def sum_session_entries(section):
+    work_seconds = 0
+    pause_seconds = 0
+    entry_count = 0
+    for pattern in (TABLE_ENTRY_RE, LEGACY_ENTRY_RE):
+        for entry in pattern.finditer(section):
+            work_seconds += duration_to_seconds(entry.group("work"))
+            pause_seconds += duration_to_seconds(entry.group("pause"))
+            entry_count += 1
+    for entry in LEGACY_ENTRY_WITHOUT_PAUSE_RE.finditer(section):
+        work_seconds += duration_to_seconds(entry.group("work"))
+        entry_count += 1
+    return entry_count, work_seconds, pause_seconds
+
+
+def day_totals(path, moment):
+    if not path.exists():
+        return 0, 0
+    existing = path.read_text(encoding="utf-8")
+    date_heading = format_date(moment)
+    heading_block = f"{date_heading}\n{'=' * len(date_heading)}"
+    heading_position = existing.rfind(heading_block)
+    if heading_position == -1:
+        return 0, 0
+    _, work_seconds, pause_seconds = sum_session_entries(
+        existing[heading_position:]
+    )
+    return work_seconds, pause_seconds
 
 
 def complete_day(path, moment):
@@ -258,17 +324,9 @@ def complete_day(path, moment):
                 duration_to_seconds(previous_total.group("pause")),
             )
 
-        work_seconds = 0
-        pause_seconds = 0
-        entry_count = 0
-        for pattern in (TABLE_ENTRY_RE, LEGACY_ENTRY_RE):
-            for entry in pattern.finditer(current_section):
-                work_seconds += duration_to_seconds(entry.group("work"))
-                pause_seconds += duration_to_seconds(entry.group("pause"))
-                entry_count += 1
-        for entry in LEGACY_ENTRY_WITHOUT_PAUSE_RE.finditer(current_section):
-            work_seconds += duration_to_seconds(entry.group("work"))
-            entry_count += 1
+        entry_count, work_seconds, pause_seconds = sum_session_entries(
+            current_section
+        )
 
         if entry_count == 0:
             return "no_sessions", 0, 0
@@ -354,13 +412,15 @@ def update_overall_summary(path):
 
 
 HELP = """Comandi (premi Invio dopo ogni comando):
-  start / avvia       Avvia la sessione.
-  pausa / pause       Mette in pausa.
-  riprendi / resume   Riprende la sessione.
-  stato / status      Mostra durata effettiva e stato.
-  stop               Ferma e salva la sessione, poi resta aperto.
-  completa / complete Chiude la giornata con i totali ed esce.
-  aiuto / help       Mostra questi comandi.
+  start / avvia / a        Avvia la sessione.
+  pausa / pause / p        Mette in pausa.
+  riprendi / resume / r    Riprende la sessione.
+  stato / status / st      Mostra durata effettiva e stato.
+  oggi / giornata / o      Mostra il totale della giornata in corso.
+  stop / s                 Ferma e salva, poi resta aperto.
+  completa / complete / c  Chiude la giornata con i totali ed esce.
+  esci / exit / e / q      Salva l'eventuale sessione ed esce.
+  aiuto / help / h / ?     Mostra questi comandi.
 Ctrl+C non interrompe il programma; Ctrl+D equivale a completa."""
 
 
@@ -414,7 +474,10 @@ def main():
         parser.error(f"Il percorso non è un file: {path}")
 
     timer = Stopwatch()
-    print(f"File: {path}\n{HELP}\nPronto. Digita start per cominciare.")
+    print(
+        f"{ASCII_ART}\n\nFile: {path}\n{HELP}\n"
+        "Pronto. Digita start per cominciare."
+    )
     clear_before_prompt = False
     while True:
         if clear_before_prompt:
@@ -431,7 +494,7 @@ def main():
             print()
             command = "completa"
 
-        if command == "stop":
+        if command in STOP_COMMANDS:
             if not timer.stop():
                 print("Nessuna sessione avviata: nessuna riga salvata.")
                 clear_before_prompt = False
@@ -439,7 +502,7 @@ def main():
             path, saved = save_timer(path, timer)
             if not saved:
                 return 1
-        elif command in ("completa", "complete"):
+        elif command in COMPLETE_COMMANDS:
             clear_terminal()
             if timer.state in ("in corso", "in pausa"):
                 timer.stop()
@@ -472,7 +535,16 @@ def main():
                     f"{format_duration(overall_seconds)}."
                 )
             return 0
-        elif command in ("start", "avvia"):
+        elif command in EXIT_COMMANDS:
+            clear_terminal()
+            if timer.state in ("in corso", "in pausa"):
+                timer.stop()
+                path, saved = save_timer(path, timer)
+                if not saved:
+                    return 1
+            print("Cronometro chiuso senza completare la giornata.")
+            return 0
+        elif command in START_COMMANDS:
             if timer.state == "terminato":
                 timer = Stopwatch()
             if timer.start():
@@ -480,23 +552,38 @@ def main():
             else:
                 print("Sessione già avviata. Usa riprendi se è in pausa.")
                 clear_before_prompt = False
-        elif command in ("pause", "pausa"):
+        elif command in PAUSE_COMMANDS:
             if timer.pause():
                 print("In pausa.")
             else:
                 print("La sessione non è in corso.")
                 clear_before_prompt = False
-        elif command in ("resume", "riprendi"):
+        elif command in RESUME_COMMANDS:
             if timer.resume():
                 print("Sessione ripresa.")
             else:
                 print("La sessione non è in pausa.")
                 clear_before_prompt = False
-        elif command in ("status", "stato"):
+        elif command in STATUS_COMMANDS:
             seconds = math.floor(timer.elapsed())
             print(f"{hhmm(seconds)}:{seconds % 60:02d} — {timer.state}")
             clear_before_prompt = False
-        elif command in ("help", "aiuto", "?"):
+        elif command in TODAY_COMMANDS:
+            try:
+                work_seconds, pause_seconds = day_totals(path, datetime.now())
+            except OSError as error:
+                print(f"Lettura del totale giornaliero non riuscita: {error}")
+                clear_before_prompt = False
+                continue
+            if timer.state in ("in corso", "in pausa"):
+                work_seconds += timer.elapsed()
+                pause_seconds += timer.pause_elapsed()
+            print(
+                f"Oggi — lavoro: {format_duration(work_seconds)} | "
+                f"pause: {format_duration(pause_seconds)}"
+            )
+            clear_before_prompt = False
+        elif command in HELP_COMMANDS:
             print(HELP)
             clear_before_prompt = False
         elif command:

@@ -16,22 +16,36 @@ Puoi scegliere qualsiasi file: usa le virgolette se il percorso contiene spazi. 
 
 Scrivi ciascun comando e premi **Invio**:
 
-| Comando | Effetto |
-| --- | --- |
-| `start` | Avvia il conteggio. |
-| `pausa` | Sospende il conteggio. |
-| `riprendi` | Riprende dalla durata accumulata. |
-| `stato` | Mostra durata in `hh:mm:ss` e stato attuale. |
-| `stop` | Salva la sessione e rimane pronto per un nuovo avvio. |
-| `completa` | Chiude la giornata, aggiunge i totali ed esce. |
-| `aiuto` | Mostra i comandi disponibili. |
+| Comando | Abbreviazione | Effetto |
+| --- | --- | --- |
+| `start`, `avvia` | `a` | Avvia il conteggio. |
+| `pausa`, `pause` | `p` | Sospende il conteggio. |
+| `riprendi`, `resume` | `r` | Riprende dalla durata accumulata. |
+| `stato`, `status` | `st` | Mostra durata e stato attuale. |
+| `oggi`, `giornata` | `o` | Mostra lavoro e pause della giornata. |
+| `stop` | `s` | Salva la sessione e rimane aperto. |
+| `completa`, `complete` | `c` | Aggiunge i totali ed esce. |
+| `esci`, `exit` | `e`, `q` | Salva la sessione attiva ed esce senza totali. |
+| `aiuto`, `help` | `h`, `?` | Mostra i comandi disponibili. |
 
-Sono accettati anche `avvia`, `pause`, `resume`, `status`, `complete` e `help`. Il cronometro attende `start`: il tempo impiegato prima di quel comando non conta. Lo stato viene mostrato su richiesta, senza aggiornamento continuo del display.
+Il cronometro attende `start`: il tempo impiegato prima di quel comando non conta.
+All'apertura mostra il nome del programma con un'intestazione ASCII.
 
 `stop` può essere usato più volte per registrare diverse sessioni senza riavviare
 il programma. Se usi `completa` mentre una sessione è in corso o in pausa, questa
 viene prima fermata e salvata. **Ctrl+C** viene ignorato per evitare chiusure
 accidentali; **Ctrl+D** equivale a `completa`.
+
+`esci` termina il programma senza aggiungere il totale della giornata. Se una
+sessione è in corso o in pausa, viene comunque fermata e salvata prima di uscire.
+
+`oggi` somma le sessioni già salvate nella data corrente e aggiunge il tempo
+della sessione attiva, se presente. Il comando mostra il risultato senza salvare
+o interrompere il cronometro:
+
+```text
+Oggi — lavoro: 04:12:35 | pause: 00:28:10
+```
 
 ## Visualizzazione in tempo reale
 
@@ -82,6 +96,10 @@ partenza e quella di fine sono invece orari del giorno, rilevati dal computer.
 Il comando `completa` somma tutte le sessioni della data corrente e chiude la
 tabella con il totale del lavoro effettivo e delle pause. Se la giornata è già
 stata completata, il totale non viene duplicato.
+
+Se viene registrata un'altra sessione nello stesso giorno dopo `completa`, il
+programma riapre la tabella rimuovendo il vecchio totale. Un nuovo `completa`
+ricalcola quindi sia il totale giornaliero sia quello complessivo.
 
 Se il file contiene in apertura il riepilogo `Somma totale delle ore lavorate`,
 `completa` lo ricostruisce usando i totali delle singole giornate. Il riepilogo

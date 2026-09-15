@@ -88,6 +88,11 @@ class FileOutputTests(unittest.TestCase):
             cronometro.append_duration(path, first_start, 10800, 1800, first_end)
             cronometro.append_duration(path, second_start, 1530, 300, second_end)
 
+            self.assertEqual(
+                cronometro.day_totals(path, first_end),
+                (12330, 2100),
+            )
+
             result, work_seconds, pause_seconds = cronometro.complete_day(
                 path, first_end
             )
@@ -112,6 +117,23 @@ class FileOutputTests(unittest.TestCase):
             self.assertEqual(repeated_result, ("already_complete", 12330, 2100))
             self.assertEqual(
                 path.read_text(encoding="utf-8").count("Totale   |"), 1
+            )
+
+            cronometro.append_duration(
+                path,
+                datetime(2026, 9, 14, 22, 0, 0),
+                1800,
+                300,
+                datetime(2026, 9, 14, 22, 35, 0),
+            )
+            self.assertNotIn(
+                "Totale   |", path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                cronometro.complete_day(
+                    path, datetime(2026, 9, 14, 22, 35, 0)
+                ),
+                ("completed", 14130, 2400),
             )
 
     def test_table_header_is_added_after_entries_from_the_old_format(self):
@@ -164,7 +186,7 @@ class CommandFlowTests(unittest.TestCase):
             path = Path(directory) / "studio.txt"
             commands = mock.patch(
                 "builtins.input",
-                side_effect=("start", "stop", "start", "stop", "completa"),
+                side_effect=("a", "s", "a", "s", "c"),
             )
             arguments = mock.patch.object(
                 sys, "argv", ["cronometro.py", str(path)]
@@ -178,6 +200,42 @@ class CommandFlowTests(unittest.TestCase):
             self.assertIn("Totale   |", contents)
             self.assertIn("Totale complessivo", contents)
             self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 2)
+
+    def test_exit_alias_saves_active_session_without_daily_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "studio.txt"
+            output = io.StringIO()
+            commands = mock.patch("builtins.input", side_effect=("a", "e"))
+            arguments = mock.patch.object(
+                sys, "argv", ["cronometro.py", str(path)]
+            )
+
+            with commands, arguments, contextlib.redirect_stdout(output):
+                result = cronometro.main()
+
+            contents = path.read_text(encoding="utf-8")
+            self.assertEqual(result, 0)
+            self.assertIn(cronometro.ASCII_ART, output.getvalue())
+            self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 1)
+            self.assertNotIn("Totale   |", contents)
+
+    def test_today_alias_displays_the_current_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "studio.txt"
+            output = io.StringIO()
+            commands = mock.patch("builtins.input", side_effect=("o", "e"))
+            arguments = mock.patch.object(
+                sys, "argv", ["cronometro.py", str(path)]
+            )
+
+            with commands, arguments, contextlib.redirect_stdout(output):
+                result = cronometro.main()
+
+            self.assertEqual(result, 0)
+            self.assertIn(
+                "Oggi — lavoro: 00:00:00 | pause: 00:00:00",
+                output.getvalue(),
+            )
 
 
 class OverallSummaryTests(unittest.TestCase):
