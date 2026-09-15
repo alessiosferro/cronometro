@@ -145,7 +145,11 @@ class Stopwatch:
 
 
 def format_live_status(timer):
-    return f"Durata: {format_duration(timer.elapsed())}"
+    return (
+        f"Durata: {format_duration(timer.elapsed())} | "
+        f"Pause: {format_duration(timer.pause_elapsed())} | "
+        f"Stato: {timer.state}"
+    )
 
 
 def clear_terminal(stream=None):

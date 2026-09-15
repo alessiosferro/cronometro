@@ -64,7 +64,7 @@ class FormattingTests(unittest.TestCase):
         moment = datetime(2026, 9, 14)
         self.assertEqual(cronometro.format_date(moment), "Lunedì 14 Settembre 2026")
 
-    def test_live_status_shows_only_the_duration(self):
+    def test_live_status_shows_duration_pauses_and_state(self):
         timer = mock.Mock()
         timer.elapsed.return_value = 3661.9
         timer.pause_elapsed.return_value = 65.2
@@ -72,7 +72,7 @@ class FormattingTests(unittest.TestCase):
 
         self.assertEqual(
             cronometro.format_live_status(timer),
-            "Durata: 01:01:01",
+            "Durata: 01:01:01 | Pause: 00:01:05 | Stato: in pausa",
         )
 
 

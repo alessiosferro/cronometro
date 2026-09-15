@@ -39,16 +39,17 @@ Dopo `start`, il cronometro mostra sopra al prompt una riga che si aggiorna
 automaticamente:
 
 ```text
-Durata: 00:42:18
+Durata: 00:42:18 | Pause: 00:05:31 | Stato: in pausa
 > riprendi
 ```
 
-Durante una pausa la durata effettiva rimane ferma; dopo `riprendi` ricomincia ad
-avanzare. Dopo ogni comando di controllo il terminale viene ripulito, lasciando
-visibili soltanto la durata e il prompt. `aiuto`, `stato` ed eventuali errori
-mantengono invece il proprio messaggio fino al comando successivo. Dopo `stop`
-rimane visibile la durata della sessione appena salvata; un nuovo `start` la
-azzera e avvia una nuova sessione.
+Durante una pausa la durata effettiva rimane ferma e il valore `Pause` continua
+ad aumentare; dopo `riprendi` ricomincia ad avanzare la durata. Dopo ogni comando
+di controllo il terminale viene ripulito, lasciando visibili i tre valori e il
+prompt. `aiuto`, `stato` ed eventuali errori mantengono invece il proprio
+messaggio fino al comando successivo. Dopo `stop` rimangono visibili i valori
+della sessione appena salvata; un nuovo `start` li azzera e avvia una nuova
+sessione.
 
 La visualizzazione dinamica viene attivata solo in un terminale interattivo,
 quindi non aggiunge sequenze di controllo quando l'output viene reindirizzato in
