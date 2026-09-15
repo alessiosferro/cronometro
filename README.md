@@ -22,12 +22,16 @@ Scrivi ciascun comando e premi **Invio**:
 | `pausa` | Sospende il conteggio. |
 | `riprendi` | Riprende dalla durata accumulata. |
 | `stato` | Mostra durata in `hh:mm:ss` e stato attuale. |
-| `stop` | Salva la durata e chiude l'applicazione. |
+| `stop` | Salva la sessione e rimane pronto per un nuovo avvio. |
+| `completa` | Chiude la giornata, aggiunge i totali ed esce. |
 | `aiuto` | Mostra i comandi disponibili. |
 
-Sono accettati anche `avvia`, `pause`, `resume`, `status` e `help`. Il cronometro attende `start`: il tempo impiegato prima di quel comando non conta. Lo stato viene mostrato su richiesta, senza aggiornamento continuo del display.
+Sono accettati anche `avvia`, `pause`, `resume`, `status`, `complete` e `help`. Il cronometro attende `start`: il tempo impiegato prima di quel comando non conta. Lo stato viene mostrato su richiesta, senza aggiornamento continuo del display.
 
-**Ctrl+C** e **Ctrl+D** fanno stop e salvano; prima di `start` escono senza scrivere. Per una nuova sessione, esegui nuovamente il programma.
+`stop` può essere usato più volte per registrare diverse sessioni senza riavviare
+il programma. Se usi `completa` mentre una sessione è in corso o in pausa, questa
+viene prima fermata e salvata. **Ctrl+C** viene ignorato per evitare chiusure
+accidentali; **Ctrl+D** equivale a `completa`.
 
 ## File salvato
 
@@ -43,6 +47,8 @@ Inizio   | Durata   | Pause    | Fine
 ---------+----------+----------+---------
 17:20:45 | 03:00:00 | 00:30:00 | 20:50:45
 21:10:00 | 00:25:30 | 00:05:00 | 21:40:30
+=========+==========+==========+=========
+Totale   | 03:25:30 | 00:35:00 |
 ```
 
 La tabella riporta ora di partenza, durata effettiva, pause totali e ora di fine,
@@ -50,6 +56,10 @@ sempre con ore, minuti e secondi (`hh:mm:ss`). La durata effettiva esclude tutte
 le pause, mentre la colonna `Pause` ne riporta la durata complessiva. Le frazioni
 di secondo vengono troncate e le ore delle durate possono superare 99. L'ora di
 partenza e quella di fine sono invece orari del giorno, rilevati dal computer.
+
+Il comando `completa` somma tutte le sessioni della data corrente e chiude la
+tabella con il totale del lavoro effettivo e delle pause. Se la giornata è già
+stata completata, il totale non viene duplicato.
 
 I dati creati dalle versioni precedenti restano invariati. Quando il programma
 trova una giornata già presente nel vecchio formato, aggiunge sotto di essa
@@ -94,8 +104,8 @@ python3 -m unittest discover -s tests
 ```
 
 I test verificano il conteggio e la somma delle pause, il formato delle date e
-delle durate, la struttura del file e l'assenza di intestazioni giornaliere
-duplicate.
+delle durate, la struttura e la chiusura della tabella, il flusso dei comandi e
+l'assenza di intestazioni o totali duplicati.
 
 ## Licenza
 

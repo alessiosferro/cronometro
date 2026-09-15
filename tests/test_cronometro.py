@@ -1,7 +1,11 @@
+import contextlib
+import io
+import sys
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 import cronometro
 
@@ -73,7 +77,14 @@ class FileOutputTests(unittest.TestCase):
             cronometro.append_duration(path, first_start, 10800, 1800, first_end)
             cronometro.append_duration(path, second_start, 1530, 300, second_end)
 
+            result, work_seconds, pause_seconds = cronometro.complete_day(
+                path, first_end
+            )
+
             heading = "Lunedì 14 Settembre 2026"
+            self.assertEqual(result, "completed")
+            self.assertEqual(work_seconds, 12330)
+            self.assertEqual(pause_seconds, 2100)
             self.assertEqual(
                 path.read_text(encoding="utf-8"),
                 f"{heading}\n"
@@ -81,7 +92,15 @@ class FileOutputTests(unittest.TestCase):
                 "Inizio   | Durata   | Pause    | Fine\n"
                 "---------+----------+----------+---------\n"
                 "17:20:45 | 03:00:00 | 00:30:00 | 20:50:45\n"
-                "21:10:00 | 00:25:30 | 00:05:00 | 21:40:30\n",
+                "21:10:00 | 00:25:30 | 00:05:00 | 21:40:30\n"
+                "=========+==========+==========+=========\n"
+                "Totale   | 03:25:30 | 00:35:00 |\n",
+            )
+
+            repeated_result = cronometro.complete_day(path, first_end)
+            self.assertEqual(repeated_result, ("already_complete", 12330, 2100))
+            self.assertEqual(
+                path.read_text(encoding="utf-8").count("Totale   |"), 1
             )
 
     def test_table_header_is_added_after_entries_from_the_old_format(self):
@@ -111,6 +130,11 @@ class FileOutputTests(unittest.TestCase):
                 )
             )
 
+            result = cronometro.complete_day(
+                path, datetime(2026, 9, 14, 12, 10, 0)
+            )
+            self.assertEqual(result, ("completed", 7200, 1200))
+
     def test_existing_content_is_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "studio.txt"
@@ -121,6 +145,26 @@ class FileOutputTests(unittest.TestCase):
             cronometro.append_duration(path, start, 60, 0, end)
 
             self.assertTrue(path.read_text(encoding="utf-8").startswith("Appunti precedenti\n\n"))
+
+
+class CommandFlowTests(unittest.TestCase):
+    def test_stop_saves_and_complete_exits_with_daily_total(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "studio.txt"
+            commands = mock.patch(
+                "builtins.input", side_effect=("start", "stop", "completa")
+            )
+            arguments = mock.patch.object(
+                sys, "argv", ["cronometro.py", str(path)]
+            )
+
+            with commands, arguments, contextlib.redirect_stdout(io.StringIO()):
+                result = cronometro.main()
+
+            self.assertEqual(result, 0)
+            contents = path.read_text(encoding="utf-8")
+            self.assertIn("Totale   |", contents)
+            self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 1)
 
 
 if __name__ == "__main__":

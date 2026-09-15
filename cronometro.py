@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 import math
 from pathlib import Path
+import re
 import time
 
 
@@ -27,10 +28,36 @@ MONTHS = (
 )
 TABLE_HEADER = "Inizio   | Durata   | Pause    | Fine"
 TABLE_SEPARATOR = "---------+----------+----------+---------"
+TABLE_TOTAL_SEPARATOR = "=========+==========+==========+========="
+TABLE_ENTRY_RE = re.compile(
+    r"^\d{2}:\d{2}:\d{2} \| (?P<work>\d+:\d{2}:\d{2}) \| "
+    r"(?P<pause>\d+:\d{2}:\d{2}) \| \d{2}:\d{2}:\d{2}$",
+    re.MULTILINE,
+)
+LEGACY_ENTRY_RE = re.compile(
+    r"^\d{2}:\d{2}:\d{2} - (?P<work>\d+:\d{2}:\d{2}) - "
+    r"(?P<pause>\d+:\d{2}:\d{2}) - \d{2}:\d{2}:\d{2}$",
+    re.MULTILINE,
+)
+LEGACY_ENTRY_WITHOUT_PAUSE_RE = re.compile(
+    r"^\d{2}:\d{2}:\d{2} - (?P<work>\d+:\d{2}:\d{2}) - "
+    r"\d{2}:\d{2}:\d{2}$",
+    re.MULTILINE,
+)
+TOTAL_ENTRY_RE = re.compile(
+    r"^Totale\s+\| (?P<work>\d+:\d{2}:\d{2}) \| "
+    r"(?P<pause>\d+:\d{2}:\d{2}) \|$",
+    re.MULTILINE,
+)
 
 
 def format_date(moment):
     return f"{WEEKDAYS[moment.weekday()]} {moment.day} {MONTHS[moment.month - 1]} {moment.year}"
+
+
+def duration_to_seconds(value):
+    hours, minutes, seconds = (int(part) for part in value.split(":"))
+    return hours * 3600 + minutes * 60 + seconds
 
 
 class Stopwatch:
@@ -133,14 +160,110 @@ def append_duration(path, started_at, seconds, pause_seconds, ended_at):
         stream.write((addition + time_entry + "\n").encode("utf-8"))
 
 
+def complete_day(path, moment):
+    if not path.exists():
+        return "no_sessions", 0, 0
+
+    date_heading = format_date(moment)
+    heading_block = f"{date_heading}\n{'=' * len(date_heading)}"
+
+    with path.open("a+b") as stream:
+        stream.seek(0)
+        existing = stream.read().decode("utf-8", errors="replace")
+        heading_position = existing.rfind(heading_block)
+        if heading_position == -1:
+            return "no_sessions", 0, 0
+
+        current_section = existing[heading_position:]
+        previous_total = TOTAL_ENTRY_RE.search(current_section)
+        if previous_total:
+            return (
+                "already_complete",
+                duration_to_seconds(previous_total.group("work")),
+                duration_to_seconds(previous_total.group("pause")),
+            )
+
+        work_seconds = 0
+        pause_seconds = 0
+        entry_count = 0
+        for pattern in (TABLE_ENTRY_RE, LEGACY_ENTRY_RE):
+            for entry in pattern.finditer(current_section):
+                work_seconds += duration_to_seconds(entry.group("work"))
+                pause_seconds += duration_to_seconds(entry.group("pause"))
+                entry_count += 1
+        for entry in LEGACY_ENTRY_WITHOUT_PAUSE_RE.finditer(current_section):
+            work_seconds += duration_to_seconds(entry.group("work"))
+            entry_count += 1
+
+        if entry_count == 0:
+            return "no_sessions", 0, 0
+
+        addition = ""
+        if existing and not existing.endswith("\n"):
+            addition += "\n"
+        if TABLE_HEADER not in current_section:
+            if existing and not (existing + addition).endswith("\n\n"):
+                addition += "\n"
+            addition += f"{TABLE_HEADER}\n{TABLE_SEPARATOR}\n"
+        addition += (
+            f"{TABLE_TOTAL_SEPARATOR}\n"
+            f"Totale   | {format_duration(work_seconds)} | "
+            f"{format_duration(pause_seconds)} |\n"
+        )
+
+        stream.seek(0, 2)
+        stream.write(addition.encode("utf-8"))
+        return "completed", work_seconds, pause_seconds
+
+
 HELP = """Comandi (premi Invio dopo ogni comando):
   start / avvia       Avvia la sessione.
   pausa / pause       Mette in pausa.
   riprendi / resume   Riprende la sessione.
   stato / status      Mostra durata effettiva e stato.
-  stop               Ferma, salva la durata ed esce.
+  stop               Ferma e salva la sessione, poi resta aperto.
+  completa / complete Chiude la giornata con i totali ed esce.
   aiuto / help       Mostra questi comandi.
-Ctrl+C o Ctrl+D equivalgono a stop. Prima di start escono senza salvare."""
+Ctrl+C non interrompe il programma; Ctrl+D equivale a completa."""
+
+
+def save_timer(path, timer):
+    duration = timer.elapsed()
+    pause_duration = timer.pause_elapsed()
+    while True:
+        try:
+            append_duration(
+                path,
+                timer.started_at,
+                duration,
+                pause_duration,
+                timer.ended_at,
+            )
+        except OSError as error:
+            print(f"Salvataggio non riuscito: {error}")
+            print(
+                f"Durata da conservare: {format_duration(duration)}; "
+                f"pause: {format_duration(pause_duration)}"
+            )
+            try:
+                new_path = input(
+                    "Nuovo file (Invio per riprovare, Ctrl+C per continuare): "
+                ).strip()
+            except KeyboardInterrupt:
+                print()
+                continue
+            except EOFError:
+                print("\nDurata NON salvata.")
+                return path, False
+            if new_path:
+                path = Path(new_path).expanduser().absolute()
+            continue
+
+        print(
+            f"Salvato {format_duration(duration)} "
+            f"(pause: {format_duration(pause_duration)}) in {path}"
+        )
+        return path, True
 
 
 def main():
@@ -158,44 +281,49 @@ def main():
     while True:
         try:
             command = input("> ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
+        except KeyboardInterrupt:
+            print("\nInterruzione ignorata. Digita completa per terminare.")
+            continue
+        except EOFError:
             print()
-            command = "stop"
+            command = "completa"
 
         if command == "stop":
             if not timer.stop():
                 print("Nessuna sessione avviata: nessuna riga salvata.")
-                return 0
-            duration = timer.elapsed()
-            pause_duration = timer.pause_elapsed()
-            while True:
-                try:
-                    append_duration(
-                        path,
-                        timer.started_at,
-                        duration,
-                        pause_duration,
-                        timer.ended_at,
-                    )
-                except OSError as error:
-                    print(f"Salvataggio non riuscito: {error}")
-                    print(
-                        f"Durata da conservare: {format_duration(duration)}; "
-                        f"pause: {format_duration(pause_duration)}"
-                    )
-                    try:
-                        new_path = input("Nuovo file (Invio per riprovare, Ctrl+C per uscire): ").strip()
-                    except (KeyboardInterrupt, EOFError):
-                        print("\nDurata NON salvata.")
-                        return 1
-                    if new_path:
-                        path = Path(new_path).expanduser().absolute()
-                    continue
-                print(
-                    f"Salvato {format_duration(duration)} "
-                    f"(pause: {format_duration(pause_duration)}) in {path}"
+                continue
+            path, saved = save_timer(path, timer)
+            if not saved:
+                return 1
+            timer = Stopwatch()
+            print("Pronto per una nuova sessione. Digita start o completa.")
+        elif command in ("completa", "complete"):
+            if timer.state != "pronto":
+                timer.stop()
+                path, saved = save_timer(path, timer)
+                if not saved:
+                    return 1
+                timer = Stopwatch()
+            try:
+                result, work_seconds, pause_seconds = complete_day(
+                    path, datetime.now()
                 )
-                return 0
+            except OSError as error:
+                print(f"Chiusura della giornata non riuscita: {error}")
+                continue
+            if result == "completed":
+                print(
+                    f"Giornata completata: {format_duration(work_seconds)} "
+                    f"di lavoro, {format_duration(pause_seconds)} di pausa."
+                )
+            elif result == "already_complete":
+                print(
+                    f"Giornata già completata: {format_duration(work_seconds)} "
+                    f"di lavoro, {format_duration(pause_seconds)} di pausa."
+                )
+            else:
+                print("Nessuna sessione da totalizzare per la giornata corrente.")
+            return 0
         elif command in ("start", "avvia"):
             print("Sessione avviata." if timer.start() else "Sessione già avviata. Usa riprendi se è in pausa.")
         elif command in ("pause", "pausa"):
