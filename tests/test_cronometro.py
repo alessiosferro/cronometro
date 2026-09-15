@@ -64,7 +64,7 @@ class FormattingTests(unittest.TestCase):
         moment = datetime(2026, 9, 14)
         self.assertEqual(cronometro.format_date(moment), "Lunedì 14 Settembre 2026")
 
-    def test_live_status_shows_work_pause_and_state(self):
+    def test_live_status_shows_only_the_duration(self):
         timer = mock.Mock()
         timer.elapsed.return_value = 3661.9
         timer.pause_elapsed.return_value = 65.2
@@ -72,7 +72,7 @@ class FormattingTests(unittest.TestCase):
 
         self.assertEqual(
             cronometro.format_live_status(timer),
-            "Durata: 01:01:01 | Pause: 00:01:05 | Stato: in pausa",
+            "Durata: 01:01:01",
         )
 
 
@@ -163,7 +163,8 @@ class CommandFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "studio.txt"
             commands = mock.patch(
-                "builtins.input", side_effect=("start", "stop", "completa")
+                "builtins.input",
+                side_effect=("start", "stop", "start", "stop", "completa"),
             )
             arguments = mock.patch.object(
                 sys, "argv", ["cronometro.py", str(path)]
@@ -176,7 +177,7 @@ class CommandFlowTests(unittest.TestCase):
             contents = path.read_text(encoding="utf-8")
             self.assertIn("Totale   |", contents)
             self.assertIn("Totale complessivo", contents)
-            self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 1)
+            self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 2)
 
 
 class OverallSummaryTests(unittest.TestCase):

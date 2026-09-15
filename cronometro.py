@@ -130,7 +130,7 @@ class Stopwatch:
         return self.paused_total + current_pause
 
     def stop(self):
-        if self.state == "pronto":
+        if self.state not in ("in corso", "in pausa"):
             return False
         now = self.clock()
         if self.state == "in corso":
@@ -145,11 +145,16 @@ class Stopwatch:
 
 
 def format_live_status(timer):
-    return (
-        f"Durata: {format_duration(timer.elapsed())} | "
-        f"Pause: {format_duration(timer.pause_elapsed())} | "
-        f"Stato: {timer.state}"
-    )
+    return f"Durata: {format_duration(timer.elapsed())}"
+
+
+def clear_terminal(stream=None):
+    stream = stream if stream is not None else sys.stdout
+    if not stream.isatty():
+        return False
+    stream.write("\033[2J\033[H")
+    stream.flush()
+    return True
 
 
 class LiveDisplay:
@@ -406,12 +411,17 @@ def main():
 
     timer = Stopwatch()
     print(f"File: {path}\n{HELP}\nPronto. Digita start per cominciare.")
+    clear_before_prompt = False
     while True:
+        if clear_before_prompt:
+            clear_terminal()
+        clear_before_prompt = True
         try:
             with LiveDisplay(timer):
                 command = input("> ").strip().lower()
         except KeyboardInterrupt:
             print("\nInterruzione ignorata. Digita completa per terminare.")
+            clear_before_prompt = False
             continue
         except EOFError:
             print()
@@ -420,19 +430,18 @@ def main():
         if command == "stop":
             if not timer.stop():
                 print("Nessuna sessione avviata: nessuna riga salvata.")
+                clear_before_prompt = False
                 continue
             path, saved = save_timer(path, timer)
             if not saved:
                 return 1
-            timer = Stopwatch()
-            print("Pronto per una nuova sessione. Digita start o completa.")
         elif command in ("completa", "complete"):
-            if timer.state != "pronto":
+            clear_terminal()
+            if timer.state in ("in corso", "in pausa"):
                 timer.stop()
                 path, saved = save_timer(path, timer)
                 if not saved:
                     return 1
-                timer = Stopwatch()
             try:
                 result, work_seconds, pause_seconds = complete_day(
                     path, datetime.now()
@@ -460,18 +469,35 @@ def main():
                 )
             return 0
         elif command in ("start", "avvia"):
-            print("Sessione avviata." if timer.start() else "Sessione già avviata. Usa riprendi se è in pausa.")
+            if timer.state == "terminato":
+                timer = Stopwatch()
+            if timer.start():
+                print("Sessione avviata.")
+            else:
+                print("Sessione già avviata. Usa riprendi se è in pausa.")
+                clear_before_prompt = False
         elif command in ("pause", "pausa"):
-            print("In pausa." if timer.pause() else "La sessione non è in corso.")
+            if timer.pause():
+                print("In pausa.")
+            else:
+                print("La sessione non è in corso.")
+                clear_before_prompt = False
         elif command in ("resume", "riprendi"):
-            print("Sessione ripresa." if timer.resume() else "La sessione non è in pausa.")
+            if timer.resume():
+                print("Sessione ripresa.")
+            else:
+                print("La sessione non è in pausa.")
+                clear_before_prompt = False
         elif command in ("status", "stato"):
             seconds = math.floor(timer.elapsed())
             print(f"{hhmm(seconds)}:{seconds % 60:02d} — {timer.state}")
+            clear_before_prompt = False
         elif command in ("help", "aiuto", "?"):
             print(HELP)
+            clear_before_prompt = False
         elif command:
             print("Comando sconosciuto. Digita aiuto per l'elenco.")
+            clear_before_prompt = False
 
 
 if __name__ == "__main__":
