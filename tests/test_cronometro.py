@@ -164,7 +164,47 @@ class CommandFlowTests(unittest.TestCase):
             self.assertEqual(result, 0)
             contents = path.read_text(encoding="utf-8")
             self.assertIn("Totale   |", contents)
+            self.assertIn("Totale complessivo", contents)
             self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 1)
+
+
+class OverallSummaryTests(unittest.TestCase):
+    def test_summary_is_rebuilt_from_daily_totals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "studio.txt"
+            path.write_text(
+                "Somma totale delle ore lavorate\n"
+                "===============================\n\n"
+                "01:30\n\n"
+                "Totale ore: 01:30\n"
+                "================================\n\n"
+                "Domenica 13 Settembre 2026\n"
+                "==========================\n\n"
+                "Totale: 01:30\n\n"
+                "Lunedì 14 Settembre 2026\n"
+                "========================\n\n"
+                "Inizio   | Durata   | Pause    | Fine\n"
+                "---------+----------+----------+---------\n"
+                "09:00:00 | 00:45:00 | 00:05:00 | 09:50:00\n"
+                "=========+==========+==========+=========\n"
+                "Totale   | 00:45:00 | 00:05:00 |\n",
+                encoding="utf-8",
+            )
+
+            overall_seconds = cronometro.update_overall_summary(path)
+
+            contents = path.read_text(encoding="utf-8")
+            self.assertEqual(overall_seconds, 8100)
+            self.assertIn(
+                "Domenica 13 Settembre 2026   | 01:30:00", contents
+            )
+            self.assertIn(
+                "Lunedì 14 Settembre 2026     | 00:45:00", contents
+            )
+            self.assertIn(
+                "Totale complessivo           | 02:15:00", contents
+            )
+            self.assertEqual(contents.count("Domenica 13 Settembre 2026"), 2)
 
 
 if __name__ == "__main__":

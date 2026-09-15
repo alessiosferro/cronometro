@@ -49,6 +49,19 @@ TOTAL_ENTRY_RE = re.compile(
     r"(?P<pause>\d+:\d{2}:\d{2}) \|$",
     re.MULTILINE,
 )
+DAILY_WORK_TOTAL_RE = re.compile(
+    r"^Totale\s+\| (?P<work>\d+:\d{2}:\d{2}) \|",
+    re.MULTILINE,
+)
+DAILY_HEADING_RE = re.compile(
+    r"^(?P<date>[^\n]+ \d{1,2} [^\n]+ \d{4})\n=+$",
+    re.MULTILINE,
+)
+LEGACY_DAILY_TOTAL_RE = re.compile(
+    r"^Totale:\s*(?P<work>\d+:\d{2}(?::\d{2})?)$",
+    re.MULTILINE,
+)
+SUMMARY_TITLE = "Somma totale delle ore lavorate"
 
 
 def format_date(moment):
@@ -56,7 +69,10 @@ def format_date(moment):
 
 
 def duration_to_seconds(value):
-    hours, minutes, seconds = (int(part) for part in value.split(":"))
+    parts = [int(part) for part in value.split(":")]
+    if len(parts) == 2:
+        parts.append(0)
+    hours, minutes, seconds = parts
     return hours * 3600 + minutes * 60 + seconds
 
 
@@ -216,6 +232,68 @@ def complete_day(path, moment):
         return "completed", work_seconds, pause_seconds
 
 
+def update_overall_summary(path):
+    existing = path.read_text(encoding="utf-8")
+    headings = list(DAILY_HEADING_RE.finditer(existing))
+    if not headings:
+        return None
+
+    daily_totals = []
+    for index, heading in enumerate(headings):
+        section_end = (
+            headings[index + 1].start()
+            if index + 1 < len(headings)
+            else len(existing)
+        )
+        section = existing[heading.end():section_end]
+        total = DAILY_WORK_TOTAL_RE.search(section)
+        if total:
+            work_seconds = duration_to_seconds(total.group("work"))
+        else:
+            legacy_total = LEGACY_DAILY_TOTAL_RE.search(section)
+            if not legacy_total:
+                continue
+            work_seconds = duration_to_seconds(legacy_total.group("work"))
+        daily_totals.append((heading.group("date"), work_seconds))
+
+    if not daily_totals:
+        return None
+
+    first_heading_position = headings[0].start()
+    if first_heading_position and not existing.startswith(SUMMARY_TITLE):
+        return None
+
+    label_width = max(
+        28,
+        len("Totale complessivo"),
+        *(len(date) for date, _ in daily_totals),
+    )
+    summary_lines = [
+        SUMMARY_TITLE,
+        "=" * len(SUMMARY_TITLE),
+        "",
+        f"{'Giorno':<{label_width}} | Durata",
+        f"{'-' * (label_width + 1)}+----------",
+    ]
+    summary_lines.extend(
+        f"{date:<{label_width}} | {format_duration(seconds)}"
+        for date, seconds in daily_totals
+    )
+    overall_seconds = sum(seconds for _, seconds in daily_totals)
+    summary_lines.extend(
+        (
+            f"{'=' * (label_width + 1)}+==========",
+            f"{'Totale complessivo':<{label_width}} | "
+            f"{format_duration(overall_seconds)}",
+            "",
+        )
+    )
+
+    body = existing[first_heading_position:]
+    path.write_text("\n".join(summary_lines) + "\n" + body, encoding="utf-8")
+    return overall_seconds
+
+
 HELP = """Comandi (premi Invio dopo ogni comando):
   start / avvia       Avvia la sessione.
   pausa / pause       Mette in pausa.
@@ -308,6 +386,7 @@ def main():
                 result, work_seconds, pause_seconds = complete_day(
                     path, datetime.now()
                 )
+                overall_seconds = update_overall_summary(path)
             except OSError as error:
                 print(f"Chiusura della giornata non riuscita: {error}")
                 continue
@@ -323,6 +402,11 @@ def main():
                 )
             else:
                 print("Nessuna sessione da totalizzare per la giornata corrente.")
+            if overall_seconds is not None:
+                print(
+                    f"Totale complessivo aggiornato: "
+                    f"{format_duration(overall_seconds)}."
+                )
             return 0
         elif command in ("start", "avvia"):
             print("Sessione avviata." if timer.start() else "Sessione già avviata. Usa riprendi se è in pausa.")

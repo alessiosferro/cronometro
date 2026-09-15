@@ -61,6 +61,20 @@ Il comando `completa` somma tutte le sessioni della data corrente e chiude la
 tabella con il totale del lavoro effettivo e delle pause. Se la giornata è già
 stata completata, il totale non viene duplicato.
 
+Se il file contiene in apertura il riepilogo `Somma totale delle ore lavorate`,
+`completa` lo ricostruisce usando i totali delle singole giornate. Il riepilogo
+mostra ogni data e aggiorna automaticamente il valore complessivo:
+
+```text
+Giorno                       | Durata
+-----------------------------+----------
+Domenica 13 Settembre 2026   | 05:58:00
+Lunedì 14 Settembre 2026     | 04:00:00
+Martedì 15 Settembre 2026    | 01:26:17
+=============================+==========
+Totale complessivo           | 29:18:17
+```
+
 I dati creati dalle versioni precedenti restano invariati. Quando il programma
 trova una giornata già presente nel vecchio formato, aggiunge sotto di essa
 l'intestazione della tabella prima della nuova sessione.
@@ -104,8 +118,8 @@ python3 -m unittest discover -s tests
 ```
 
 I test verificano il conteggio e la somma delle pause, il formato delle date e
-delle durate, la struttura e la chiusura della tabella, il flusso dei comandi e
-l'assenza di intestazioni o totali duplicati.
+delle durate, la struttura e la chiusura della tabella, il riepilogo complessivo,
+il flusso dei comandi e l'assenza di intestazioni o totali duplicati.
 
 ## Licenza
 
