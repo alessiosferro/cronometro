@@ -6,6 +6,8 @@ from datetime import datetime
 import math
 from pathlib import Path
 import re
+import sys
+import threading
 import time
 
 
@@ -140,6 +142,54 @@ class Stopwatch:
         self.ended_at = self.wall_clock()
         self.state = "terminato"
         return True
+
+
+def format_live_status(timer):
+    return (
+        f"Durata: {format_duration(timer.elapsed())} | "
+        f"Pause: {format_duration(timer.pause_elapsed())} | "
+        f"Stato: {timer.state}"
+    )
+
+
+class LiveDisplay:
+    def __init__(self, timer, refresh_interval=0.2, stream=None, input_stream=None):
+        self.timer = timer
+        self.refresh_interval = refresh_interval
+        self.stream = stream if stream is not None else sys.stdout
+        self.input_stream = input_stream if input_stream is not None else sys.stdin
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.enabled = (
+            timer.state != "pronto"
+            and self.stream.isatty()
+            and self.input_stream.isatty()
+        )
+
+    def __enter__(self):
+        if not self.enabled:
+            return self
+        self.stream.write(format_live_status(self.timer) + "\n")
+        self.stream.flush()
+        self.thread = threading.Thread(target=self._refresh, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, _exception_type, _exception, _traceback):
+        if self.thread is not None:
+            self.stop_event.set()
+            self.thread.join()
+
+    def _refresh(self):
+        while not self.stop_event.wait(self.refresh_interval):
+            # Save the prompt cursor, update the status line above it, then
+            # restore the cursor without disturbing the command being typed.
+            self.stream.write(
+                "\0337\033[1A\r\033[2K"
+                + format_live_status(self.timer)
+                + "\0338"
+            )
+            self.stream.flush()
 
 
 def append_duration(path, started_at, seconds, pause_seconds, ended_at):
@@ -358,7 +408,8 @@ def main():
     print(f"File: {path}\n{HELP}\nPronto. Digita start per cominciare.")
     while True:
         try:
-            command = input("> ").strip().lower()
+            with LiveDisplay(timer):
+                command = input("> ").strip().lower()
         except KeyboardInterrupt:
             print("\nInterruzione ignorata. Digita completa per terminare.")
             continue

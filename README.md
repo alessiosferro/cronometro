@@ -33,6 +33,22 @@ il programma. Se usi `completa` mentre una sessione è in corso o in pausa, ques
 viene prima fermata e salvata. **Ctrl+C** viene ignorato per evitare chiusure
 accidentali; **Ctrl+D** equivale a `completa`.
 
+## Visualizzazione in tempo reale
+
+Dopo `start`, il cronometro mostra sopra al prompt una riga che si aggiorna
+automaticamente:
+
+```text
+Durata: 00:42:18 | Pause: 00:05:31 | Stato: in pausa
+> riprendi
+```
+
+Durante una pausa la durata effettiva rimane ferma e il valore `Pause` continua
+ad aumentare. Dopo `riprendi` ricomincia ad avanzare la durata effettiva. La
+visualizzazione dinamica viene attivata solo in un terminale interattivo, quindi
+non aggiunge sequenze di controllo quando l'output viene reindirizzato in un
+file o usato da uno script.
+
 ## File salvato
 
 Le sessioni vengono raggruppate per giorno. Se l'intestazione della data corrente
@@ -117,9 +133,10 @@ test automatici dalla cartella del repository:
 python3 -m unittest discover -s tests
 ```
 
-I test verificano il conteggio e la somma delle pause, il formato delle date e
-delle durate, la struttura e la chiusura della tabella, il riepilogo complessivo,
-il flusso dei comandi e l'assenza di intestazioni o totali duplicati.
+I test verificano il conteggio e la somma delle pause, la visualizzazione in
+tempo reale, il formato delle date e delle durate, la struttura e la chiusura
+della tabella, il riepilogo complessivo, il flusso dei comandi e l'assenza di
+intestazioni o totali duplicati.
 
 ## Licenza
 
