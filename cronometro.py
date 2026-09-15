@@ -36,7 +36,9 @@ class Stopwatch:
         self.clock = clock
         self.wall_clock = wall_clock
         self.total = 0.0
+        self.paused_total = 0.0
         self.since = None
+        self.paused_since = None
         self.started_at = None
         self.ended_at = None
         self.state = "pronto"
@@ -52,35 +54,55 @@ class Stopwatch:
     def pause(self):
         if self.state != "in corso":
             return False
-        self.total += self.clock() - self.since
+        now = self.clock()
+        self.total += now - self.since
         self.since = None
+        self.paused_since = now
         self.state = "in pausa"
         return True
 
     def resume(self):
         if self.state != "in pausa":
             return False
-        self.since = self.clock()
+        now = self.clock()
+        self.paused_total += now - self.paused_since
+        self.paused_since = None
+        self.since = now
         self.state = "in corso"
         return True
 
     def elapsed(self):
         return self.total + (self.clock() - self.since if self.since is not None else 0)
 
+    def pause_elapsed(self):
+        current_pause = (
+            self.clock() - self.paused_since
+            if self.paused_since is not None
+            else 0
+        )
+        return self.paused_total + current_pause
+
     def stop(self):
         if self.state == "pronto":
             return False
-        self.pause()
+        now = self.clock()
+        if self.state == "in corso":
+            self.total += now - self.since
+        else:
+            self.paused_total += now - self.paused_since
+        self.since = None
+        self.paused_since = None
         self.ended_at = self.wall_clock()
         self.state = "terminato"
         return True
 
 
-def append_duration(path, started_at, seconds, ended_at):
+def append_duration(path, started_at, seconds, pause_seconds, ended_at):
     date_heading = format_date(ended_at)
     heading_block = f"{date_heading}\n{'=' * len(date_heading)}"
     time_entry = (
-        f"{started_at:%H:%M:%S} - {format_duration(seconds)} - {ended_at:%H:%M:%S}"
+        f"{started_at:%H:%M:%S} - {format_duration(seconds)} - "
+        f"{format_duration(pause_seconds)} - {ended_at:%H:%M:%S}"
     )
 
     with path.open("a+b") as stream:
@@ -135,12 +157,22 @@ def main():
                 print("Nessuna sessione avviata: nessuna riga salvata.")
                 return 0
             duration = timer.elapsed()
+            pause_duration = timer.pause_elapsed()
             while True:
                 try:
-                    append_duration(path, timer.started_at, duration, timer.ended_at)
+                    append_duration(
+                        path,
+                        timer.started_at,
+                        duration,
+                        pause_duration,
+                        timer.ended_at,
+                    )
                 except OSError as error:
                     print(f"Salvataggio non riuscito: {error}")
-                    print(f"Durata da conservare: {format_duration(duration)}")
+                    print(
+                        f"Durata da conservare: {format_duration(duration)}; "
+                        f"pause: {format_duration(pause_duration)}"
+                    )
                     try:
                         new_path = input("Nuovo file (Invio per riprovare, Ctrl+C per uscire): ").strip()
                     except (KeyboardInterrupt, EOFError):
@@ -149,7 +181,10 @@ def main():
                     if new_path:
                         path = Path(new_path).expanduser().absolute()
                     continue
-                print(f"Salvato {format_duration(duration)} in {path}")
+                print(
+                    f"Salvato {format_duration(duration)} "
+                    f"(pause: {format_duration(pause_duration)}) in {path}"
+                )
                 return 0
         elif command in ("start", "avvia"):
             print("Sessione avviata." if timer.start() else "Sessione già avviata. Usa riprendi se è in pausa.")

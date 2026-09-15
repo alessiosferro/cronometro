@@ -39,15 +39,16 @@ per ogni carattere:
 Lunedì 14 Settembre 2026
 ========================
 
-17:20:45 - 03:00:00 - 20:20:45
-21:10:00 - 00:25:30 - 21:35:30
+17:20:45 - 03:00:00 - 00:30:00 - 20:20:45
+21:10:00 - 00:25:30 - 00:05:00 - 21:35:30
 ```
 
-Ogni riga usa il formato `ora di partenza - durata totale - ora di fine`, sempre
-con ore, minuti e secondi (`hh:mm:ss`). Il tempo in pausa è escluso dalla durata.
-Le frazioni di secondo vengono troncate e le ore della durata possono superare 99.
-L'ora di partenza e quella di fine sono invece orari del giorno, rilevati dal
-computer.
+Ogni riga usa il formato
+`ora di partenza - durata effettiva - pause totali - ora di fine`, sempre con ore,
+minuti e secondi (`hh:mm:ss`). La durata effettiva esclude tutte le pause, mentre
+il terzo valore ne riporta la durata complessiva. Le frazioni di secondo vengono
+troncate e le ore delle durate possono superare 99. L'ora di partenza e quella di
+fine sono invece orari del giorno, rilevati dal computer.
 
 L'intestazione viene scritta una sola volta per ogni data già presente nel file.
 Il programma conserva tutto il contenuto esistente e aggiunge le nuove sessioni
@@ -87,8 +88,9 @@ test automatici dalla cartella del repository:
 python3 -m unittest discover -s tests
 ```
 
-I test verificano il conteggio con le pause, il formato delle date e delle
-durate, la struttura del file e l'assenza di intestazioni giornaliere duplicate.
+I test verificano il conteggio e la somma delle pause, il formato delle date e
+delle durate, la struttura del file e l'assenza di intestazioni giornaliere
+duplicate.
 
 ## Licenza
 
