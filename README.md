@@ -31,6 +31,11 @@ Scrivi ciascun comando e premi **Invio**:
 Il cronometro attende `start`: il tempo impiegato prima di quel comando non conta.
 All'apertura mostra il nome del programma con un'intestazione ASCII.
 
+Prima di avviare il conteggio, `start` richiede un obiettivo per la sessione. A
+ogni `pausa` puoi indicare facoltativamente il motivo dell'interruzione. `stop`,
+`completa` ed `esci` chiedono se l'obiettivo è stato raggiunto prima di salvare
+una sessione attiva.
+
 `stop` può essere usato più volte per registrare diverse sessioni senza riavviare
 il programma. Se usi `completa` mentre una sessione è in corso o in pausa, questa
 viene prima fermata e salvata. **Ctrl+C** viene ignorato per evitare chiusure
@@ -82,9 +87,20 @@ Lunedì 14 Settembre 2026
 Inizio   | Durata   | Pause    | Fine
 ---------+----------+----------+---------
 17:20:45 | 03:00:00 | 00:30:00 | 20:50:45
+          | Obiettivo: Completare il capitolo
+          | Esito: raggiunto
+          | Motivo pausa: Telefonata
 21:10:00 | 00:25:30 | 00:05:00 | 21:40:30
+          | Obiettivo: Correggere gli esercizi
+          | Esito: non raggiunto
 =========+==========+==========+=========
 Totale   | 03:25:30 | 00:35:00 |
+
+Obiettivi raggiunti:
+  - Completare il capitolo
+Obiettivi non raggiunti:
+  - Correggere gli esercizi
+Riepilogo finale: Capitolo completato; esercizi da riprendere domani.
 ```
 
 La tabella riporta ora di partenza, durata effettiva, pause totali e ora di fine,
@@ -94,8 +110,11 @@ di secondo vengono troncate e le ore delle durate possono superare 99. L'ora di
 partenza e quella di fine sono invece orari del giorno, rilevati dal computer.
 
 Il comando `completa` somma tutte le sessioni della data corrente e chiude la
-tabella con il totale del lavoro effettivo e delle pause. Se la giornata è già
-stata completata, il totale non viene duplicato.
+tabella con il totale del lavoro effettivo e delle pause. Aggiunge inoltre gli
+elenchi degli obiettivi raggiunti e non raggiunti e richiede un riepilogo finale
+facoltativo. La riga `Riepilogo finale` viene sempre salvata, usando `—` quando
+il campo viene lasciato vuoto. Se la giornata è già stata completata, il totale
+non viene duplicato.
 
 Se viene registrata un'altra sessione nello stesso giorno dopo `completa`, il
 programma riapre la tabella rimuovendo il vecchio totale. Un nuovo `completa`
@@ -157,10 +176,10 @@ test automatici dalla cartella del repository:
 python3 -m unittest discover -s tests
 ```
 
-I test verificano il conteggio e la somma delle pause, la visualizzazione in
-tempo reale, il formato delle date e delle durate, la struttura e la chiusura
-della tabella, il riepilogo complessivo, il flusso dei comandi e l'assenza di
-intestazioni o totali duplicati.
+I test verificano il conteggio e la somma delle pause, obiettivi ed esiti, motivi
+delle pause, visualizzazione in tempo reale, formato delle date e delle durate,
+struttura e chiusura della tabella, riepilogo complessivo, flusso dei comandi e
+assenza di intestazioni o totali duplicati.
 
 ## Licenza
 

@@ -85,8 +85,25 @@ class FileOutputTests(unittest.TestCase):
             second_start = datetime(2026, 9, 14, 21, 10, 0)
             second_end = datetime(2026, 9, 14, 21, 40, 30)
 
-            cronometro.append_duration(path, first_start, 10800, 1800, first_end)
-            cronometro.append_duration(path, second_start, 1530, 300, second_end)
+            cronometro.append_duration(
+                path,
+                first_start,
+                10800,
+                1800,
+                first_end,
+                "Completare il capitolo",
+                True,
+                ("Telefonata",),
+            )
+            cronometro.append_duration(
+                path,
+                second_start,
+                1530,
+                300,
+                second_end,
+                "Finire gli esercizi",
+                False,
+            )
 
             self.assertEqual(
                 cronometro.day_totals(path, first_end),
@@ -94,7 +111,7 @@ class FileOutputTests(unittest.TestCase):
             )
 
             result, work_seconds, pause_seconds = cronometro.complete_day(
-                path, first_end
+                path, first_end, "Capitolo completato, esercizi da continuare."
             )
 
             heading = "Lunedì 14 Settembre 2026"
@@ -108,9 +125,19 @@ class FileOutputTests(unittest.TestCase):
                 "Inizio   | Durata   | Pause    | Fine\n"
                 "---------+----------+----------+---------\n"
                 "17:20:45 | 03:00:00 | 00:30:00 | 20:50:45\n"
+                "          | Obiettivo: Completare il capitolo\n"
+                "          | Esito: raggiunto\n"
+                "          | Motivo pausa: Telefonata\n"
                 "21:10:00 | 00:25:30 | 00:05:00 | 21:40:30\n"
+                "          | Obiettivo: Finire gli esercizi\n"
+                "          | Esito: non raggiunto\n"
                 "=========+==========+==========+=========\n"
-                "Totale   | 03:25:30 | 00:35:00 |\n",
+                "Totale   | 03:25:30 | 00:35:00 |\n\n"
+                "Obiettivi raggiunti:\n"
+                "  - Completare il capitolo\n"
+                "Obiettivi non raggiunti:\n"
+                "  - Finire gli esercizi\n"
+                "Riepilogo finale: Capitolo completato, esercizi da continuare.\n",
             )
 
             repeated_result = cronometro.complete_day(path, first_end)
@@ -125,6 +152,8 @@ class FileOutputTests(unittest.TestCase):
                 1800,
                 300,
                 datetime(2026, 9, 14, 22, 35, 0),
+                "Ripassare gli appunti",
+                True,
             )
             self.assertNotIn(
                 "Totale   |", path.read_text(encoding="utf-8")
@@ -159,7 +188,7 @@ class FileOutputTests(unittest.TestCase):
             self.assertEqual(contents.count(cronometro.TABLE_HEADER), 1)
             self.assertTrue(
                 contents.endswith(
-                    "11:00:00 | 01:00:00 | 00:10:00 | 12:10:00\n"
+                    "          | Esito: non specificato\n"
                 )
             )
 
@@ -186,7 +215,21 @@ class CommandFlowTests(unittest.TestCase):
             path = Path(directory) / "studio.txt"
             commands = mock.patch(
                 "builtins.input",
-                side_effect=("a", "s", "a", "s", "c"),
+                side_effect=(
+                    "a",
+                    "Scrivere il capitolo",
+                    "p",
+                    "Caffè",
+                    "r",
+                    "s",
+                    "s",
+                    "a",
+                    "Correggere gli esercizi",
+                    "s",
+                    "n",
+                    "c",
+                    "Capitolo scritto; esercizi da rivedere.",
+                ),
             )
             arguments = mock.patch.object(
                 sys, "argv", ["cronometro.py", str(path)]
@@ -199,13 +242,23 @@ class CommandFlowTests(unittest.TestCase):
             contents = path.read_text(encoding="utf-8")
             self.assertIn("Totale   |", contents)
             self.assertIn("Totale complessivo", contents)
+            self.assertIn("Motivo pausa: Caffè", contents)
+            self.assertIn("  - Scrivere il capitolo", contents)
+            self.assertIn("  - Correggere gli esercizi", contents)
+            self.assertIn(
+                "Riepilogo finale: Capitolo scritto; esercizi da rivedere.",
+                contents,
+            )
             self.assertEqual(len(cronometro.TABLE_ENTRY_RE.findall(contents)), 2)
 
     def test_exit_alias_saves_active_session_without_daily_total(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "studio.txt"
             output = io.StringIO()
-            commands = mock.patch("builtins.input", side_effect=("a", "e"))
+            commands = mock.patch(
+                "builtins.input",
+                side_effect=("a", "Sessione temporanea", "e", "s"),
+            )
             arguments = mock.patch.object(
                 sys, "argv", ["cronometro.py", str(path)]
             )
