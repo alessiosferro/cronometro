@@ -2,6 +2,7 @@
 """Cronometro da terminale per macOS. Richiede Python 3.9 o successivo."""
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime
 import math
 from pathlib import Path
@@ -28,10 +29,15 @@ MONTHS = (
     "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
     "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
 )
-TABLE_HEADER = "Inizio   | Durata   | Pause    | Fine"
-TABLE_SEPARATOR = "---------+----------+----------+---------"
-TABLE_TOTAL_SEPARATOR = "=========+==========+==========+========="
+TABLE_HEADER = "Sessione | Inizio   | Fine     | Lavoro   | Pause"
+TABLE_SEPARATOR = "---------+----------+----------+----------+----------"
+TABLE_TOTAL_SEPARATOR = "=========+==========+==========+==========+=========="
 TABLE_ENTRY_RE = re.compile(
+    r"^\s*\d+ \| \d{2}:\d{2}:\d{2} \| \d{2}:\d{2}:\d{2} \| "
+    r"(?P<work>\d+:\d{2}:\d{2}) \| (?P<pause>\d+:\d{2}:\d{2})$",
+    re.MULTILINE,
+)
+PREVIOUS_TABLE_ENTRY_RE = re.compile(
     r"^\d{2}:\d{2}:\d{2} \| (?P<work>\d+:\d{2}:\d{2}) \| "
     r"(?P<pause>\d+:\d{2}:\d{2}) \| \d{2}:\d{2}:\d{2}$",
     re.MULTILINE,
@@ -47,22 +53,35 @@ LEGACY_ENTRY_WITHOUT_PAUSE_RE = re.compile(
     re.MULTILINE,
 )
 TOTAL_ENTRY_RE = re.compile(
+    r"^Totale\s+\|\s+\|\s+\| (?P<work>\d+:\d{2}:\d{2}) \| "
+    r"(?P<pause>\d+:\d{2}:\d{2})$",
+    re.MULTILINE,
+)
+PREVIOUS_TOTAL_ENTRY_RE = re.compile(
     r"^Totale\s+\| (?P<work>\d+:\d{2}:\d{2}) \| "
     r"(?P<pause>\d+:\d{2}:\d{2}) \|$",
     re.MULTILINE,
 )
 SESSION_DETAILS_RE = re.compile(
-    r"^[ \t]*\| Obiettivo: (?P<objective>.+)\n"
-    r"^[ \t]*\| Esito: (?P<outcome>raggiunto|non raggiunto)$",
+    r"^(?:[ \t]*\| )?[ \t]*Obiettivo\s*: (?P<objective>.+)\n"
+    r"^(?:[ \t]*\| )?[ \t]*Esito\s*: (?P<outcome>raggiunto|non raggiunto)$",
     re.MULTILINE,
 )
+PREVIOUS_TABLE_TOTAL_SEPARATOR = "=========+==========+==========+========="
 COMPLETION_BLOCK_RE = re.compile(
-    rf"^{re.escape(TABLE_TOTAL_SEPARATOR)}\n"
-    r"Totale\s+\| \d+:\d{2}:\d{2} \| \d+:\d{2}:\d{2} \|\n?"
+    rf"^(?:{re.escape(TABLE_TOTAL_SEPARATOR)}|"
+    rf"{re.escape(PREVIOUS_TABLE_TOTAL_SEPARATOR)})\n"
+    r"(?:Totale\s+\|\s+\|\s+\| \d+:\d{2}:\d{2} \| "
+    r"\d+:\d{2}:\d{2}|"
+    r"Totale\s+\| \d+:\d{2}:\d{2} \| \d+:\d{2}:\d{2} \|)\n?"
     r"[\s\S]*\Z",
     re.MULTILINE,
 )
 DAILY_WORK_TOTAL_RE = re.compile(
+    r"^Totale\s+\|\s+\|\s+\| (?P<work>\d+:\d{2}:\d{2}) \|",
+    re.MULTILINE,
+)
+PREVIOUS_DAILY_WORK_TOTAL_RE = re.compile(
     r"^Totale\s+\| (?P<work>\d+:\d{2}:\d{2}) \|",
     re.MULTILINE,
 )
@@ -117,7 +136,7 @@ class Stopwatch:
         self.ended_at = None
         self.objective = ""
         self.goal_achieved = None
-        self.pause_reasons = []
+        self.pauses = []
         self.state = "pronto"
 
     def start(self, objective=""):
@@ -136,14 +155,24 @@ class Stopwatch:
         self.total += now - self.since
         self.since = None
         self.paused_since = now
+        self.pauses.append(PauseRecord(started_at=self.wall_clock()))
         self.state = "in pausa"
+        return True
+
+    def set_pause_reason(self, reason):
+        if not self.pauses or self.state != "in pausa":
+            return False
+        self.pauses[-1].reason = reason
         return True
 
     def resume(self):
         if self.state != "in pausa":
             return False
         now = self.clock()
-        self.paused_total += now - self.paused_since
+        pause_duration = now - self.paused_since
+        self.paused_total += pause_duration
+        self.pauses[-1].ended_at = self.wall_clock()
+        self.pauses[-1].seconds = pause_duration
         self.paused_since = None
         self.since = now
         self.state = "in corso"
@@ -166,13 +195,26 @@ class Stopwatch:
         now = self.clock()
         if self.state == "in corso":
             self.total += now - self.since
+            ended_at = self.wall_clock()
         else:
-            self.paused_total += now - self.paused_since
+            pause_duration = now - self.paused_since
+            self.paused_total += pause_duration
+            ended_at = self.wall_clock()
+            self.pauses[-1].ended_at = ended_at
+            self.pauses[-1].seconds = pause_duration
         self.since = None
         self.paused_since = None
-        self.ended_at = self.wall_clock()
+        self.ended_at = ended_at
         self.state = "terminato"
         return True
+
+
+@dataclass
+class PauseRecord:
+    started_at: datetime
+    ended_at: datetime = None
+    seconds: float = 0.0
+    reason: str = ""
 
 
 def format_live_status(timer):
@@ -240,14 +282,10 @@ def append_duration(
     ended_at,
     objective="",
     goal_achieved=None,
-    pause_reasons=(),
+    pauses=(),
 ):
     date_heading = format_date(ended_at)
     heading_block = f"{date_heading}\n{'=' * len(date_heading)}"
-    time_entry = (
-        f"{started_at:%H:%M:%S} | {format_duration(seconds)} | "
-        f"{format_duration(pause_seconds)} | {ended_at:%H:%M:%S}"
-    )
     outcome = (
         "raggiunto"
         if goal_achieved is True
@@ -255,14 +293,6 @@ def append_duration(
         if goal_achieved is False
         else "non specificato"
     )
-    detail_lines = [
-        f"          | Obiettivo: {objective or 'Non specificato'}",
-        f"          | Esito: {outcome}",
-    ]
-    detail_lines.extend(
-        f"          | Motivo pausa: {reason}" for reason in pause_reasons
-    )
-    session_entry = "\n".join((time_entry, *detail_lines))
 
     mode = "r+b" if path.exists() else "w+b"
     with path.open(mode) as stream:
@@ -301,15 +331,57 @@ def append_duration(
                     addition += "\n"
                 addition += f"{TABLE_HEADER}\n{TABLE_SEPARATOR}\n"
 
+        current_section = existing[existing.rfind(heading_block):]
+        session_number = sum_session_entries(current_section)[0] + 1
+        time_entry = (
+            f"{session_number:>8} | {started_at:%H:%M:%S} | "
+            f"{ended_at:%H:%M:%S} | {format_duration(seconds)} | "
+            f"{format_duration(pause_seconds)}"
+        )
+        detail_lines = [
+            f"          Obiettivo : {objective or 'Non specificato'}",
+            f"          Esito     : {outcome}",
+        ]
+        if pauses:
+            detail_lines.extend(
+                (
+                    "          Pause:",
+                    "            # | Inizio   | Fine     | Durata   | Motivo",
+                    "          ----+----------+----------+----------+------------------------------",
+                )
+            )
+            for index, pause in enumerate(pauses, start=1):
+                pause_end = (
+                    f"{pause.ended_at:%H:%M:%S}"
+                    if pause.ended_at is not None
+                    else "--:--:--"
+                )
+                detail_lines.append(
+                    f"          {index:>3} | {pause.started_at:%H:%M:%S} | "
+                    f"{pause_end} | {format_duration(pause.seconds)} | "
+                    f"{pause.reason or '—'}"
+                )
+        elif pause_seconds:
+            detail_lines.append(
+                "          Pause     : dettaglio non disponibile"
+            )
+        else:
+            detail_lines.append("          Pause     : nessuna")
+        session_entry = "\n".join((time_entry, *detail_lines))
+
         stream.seek(0, 2)
-        stream.write((addition + session_entry + "\n").encode("utf-8"))
+        stream.write((addition + session_entry + "\n\n").encode("utf-8"))
 
 
 def sum_session_entries(section):
     work_seconds = 0
     pause_seconds = 0
     entry_count = 0
-    for pattern in (TABLE_ENTRY_RE, LEGACY_ENTRY_RE):
+    for pattern in (
+        TABLE_ENTRY_RE,
+        PREVIOUS_TABLE_ENTRY_RE,
+        LEGACY_ENTRY_RE,
+    ):
         for entry in pattern.finditer(section):
             work_seconds += duration_to_seconds(entry.group("work"))
             pause_seconds += duration_to_seconds(entry.group("pause"))
@@ -380,7 +452,10 @@ def complete_day(path, moment, final_summary=""):
             return "no_sessions", 0, 0
 
         current_section = existing[heading_position:]
-        previous_total = TOTAL_ENTRY_RE.search(current_section)
+        previous_total = (
+            TOTAL_ENTRY_RE.search(current_section)
+            or PREVIOUS_TOTAL_ENTRY_RE.search(current_section)
+        )
         if previous_total:
             if "Obiettivi raggiunti:" in current_section and not final_summary:
                 return (
@@ -428,8 +503,9 @@ def complete_day(path, moment, final_summary=""):
             addition += f"{TABLE_HEADER}\n{TABLE_SEPARATOR}\n"
         addition += (
             f"{TABLE_TOTAL_SEPARATOR}\n"
-            f"Totale   | {format_duration(work_seconds)} | "
-            f"{format_duration(pause_seconds)} |\n\n"
+            f"Totale   |          |          | "
+            f"{format_duration(work_seconds)} | "
+            f"{format_duration(pause_seconds)}\n\n"
             + format_goal_summary(
                 reached_goals, missed_goals, final_summary
             )
@@ -454,7 +530,10 @@ def update_overall_summary(path):
             else len(existing)
         )
         section = existing[heading.end():section_end]
-        total = DAILY_WORK_TOTAL_RE.search(section)
+        total = (
+            DAILY_WORK_TOTAL_RE.search(section)
+            or PREVIOUS_DAILY_WORK_TOTAL_RE.search(section)
+        )
         if total:
             work_seconds = duration_to_seconds(total.group("work"))
         else:
@@ -569,7 +648,7 @@ def save_timer(path, timer):
                 timer.ended_at,
                 timer.objective,
                 timer.goal_achieved,
-                timer.pause_reasons,
+                timer.pauses,
             )
         except OSError as error:
             print(f"Salvataggio non riuscito: {error}")
@@ -701,8 +780,7 @@ def main():
         elif command in PAUSE_COMMANDS:
             if timer.pause():
                 reason = ask_optional("Motivo della pausa (facoltativo): ")
-                if reason:
-                    timer.pause_reasons.append(reason)
+                timer.set_pause_reason(reason)
                 print("In pausa.")
             else:
                 print("La sessione non è in corso.")

@@ -16,6 +16,8 @@ class StopwatchTests(unittest.TestCase):
         wall_values = iter(
             (
                 datetime(2026, 9, 14, 17, 20, 45),
+                datetime(2026, 9, 14, 17, 20, 55),
+                datetime(2026, 9, 14, 17, 21, 5),
                 datetime(2026, 9, 14, 18, 20, 45),
             )
         )
@@ -33,12 +35,17 @@ class StopwatchTests(unittest.TestCase):
         self.assertEqual(timer.pause_elapsed(), 10.0)
         self.assertEqual(timer.started_at, datetime(2026, 9, 14, 17, 20, 45))
         self.assertEqual(timer.ended_at, datetime(2026, 9, 14, 18, 20, 45))
+        self.assertEqual(len(timer.pauses), 1)
+        self.assertEqual(timer.pauses[0].started_at, datetime(2026, 9, 14, 17, 20, 55))
+        self.assertEqual(timer.pauses[0].ended_at, datetime(2026, 9, 14, 17, 21, 5))
+        self.assertEqual(timer.pauses[0].seconds, 10.0)
 
     def test_stop_while_paused_counts_the_current_pause(self):
         monotonic_values = iter((10.0, 20.0, 35.0))
         wall_values = iter(
             (
                 datetime(2026, 9, 14, 17, 20, 45),
+                datetime(2026, 9, 14, 17, 20, 55),
                 datetime(2026, 9, 14, 17, 21, 10),
             )
         )
@@ -53,6 +60,41 @@ class StopwatchTests(unittest.TestCase):
 
         self.assertEqual(timer.elapsed(), 10.0)
         self.assertEqual(timer.pause_elapsed(), 15.0)
+        self.assertEqual(timer.pauses[0].ended_at, datetime(2026, 9, 14, 17, 21, 10))
+        self.assertEqual(timer.pauses[0].seconds, 15.0)
+
+    def test_pause_reason_is_stored_with_start_and_end_times(self):
+        monotonic_values = iter((10.0, 20.0, 35.0, 40.0))
+        wall_values = iter(
+            (
+                datetime(2026, 9, 14, 9, 0, 0),
+                datetime(2026, 9, 14, 9, 10, 0),
+                datetime(2026, 9, 14, 9, 25, 0),
+                datetime(2026, 9, 14, 9, 30, 0),
+            )
+        )
+        timer = cronometro.Stopwatch(
+            clock=lambda: next(monotonic_values),
+            wall_clock=lambda: next(wall_values),
+        )
+
+        timer.start("Studiare")
+        timer.pause()
+        timer.set_pause_reason("Caffè")
+        timer.resume()
+        timer.stop()
+
+        self.assertEqual(
+            timer.pauses,
+            [
+                cronometro.PauseRecord(
+                    datetime(2026, 9, 14, 9, 10, 0),
+                    datetime(2026, 9, 14, 9, 25, 0),
+                    15.0,
+                    "Caffè",
+                )
+            ],
+        )
 
 
 class FormattingTests(unittest.TestCase):
@@ -93,7 +135,19 @@ class FileOutputTests(unittest.TestCase):
                 first_end,
                 "Completare il capitolo",
                 True,
-                ("Telefonata",),
+                (
+                    cronometro.PauseRecord(
+                        datetime(2026, 9, 14, 18, 10, 0),
+                        datetime(2026, 9, 14, 18, 25, 0),
+                        900,
+                        "Telefonata",
+                    ),
+                    cronometro.PauseRecord(
+                        datetime(2026, 9, 14, 19, 30, 0),
+                        datetime(2026, 9, 14, 19, 45, 0),
+                        900,
+                    ),
+                ),
             )
             cronometro.append_duration(
                 path,
@@ -103,6 +157,14 @@ class FileOutputTests(unittest.TestCase):
                 second_end,
                 "Finire gli esercizi",
                 False,
+                (
+                    cronometro.PauseRecord(
+                        datetime(2026, 9, 14, 21, 20, 0),
+                        datetime(2026, 9, 14, 21, 25, 0),
+                        300,
+                        "Acqua",
+                    ),
+                ),
             )
 
             self.assertEqual(
@@ -122,17 +184,25 @@ class FileOutputTests(unittest.TestCase):
                 path.read_text(encoding="utf-8"),
                 f"{heading}\n"
                 f"{'=' * len(heading)}\n\n"
-                "Inizio   | Durata   | Pause    | Fine\n"
-                "---------+----------+----------+---------\n"
-                "17:20:45 | 03:00:00 | 00:30:00 | 20:50:45\n"
-                "          | Obiettivo: Completare il capitolo\n"
-                "          | Esito: raggiunto\n"
-                "          | Motivo pausa: Telefonata\n"
-                "21:10:00 | 00:25:30 | 00:05:00 | 21:40:30\n"
-                "          | Obiettivo: Finire gli esercizi\n"
-                "          | Esito: non raggiunto\n"
-                "=========+==========+==========+=========\n"
-                "Totale   | 03:25:30 | 00:35:00 |\n\n"
+                "Sessione | Inizio   | Fine     | Lavoro   | Pause\n"
+                "---------+----------+----------+----------+----------\n"
+                "       1 | 17:20:45 | 20:50:45 | 03:00:00 | 00:30:00\n"
+                "          Obiettivo : Completare il capitolo\n"
+                "          Esito     : raggiunto\n"
+                "          Pause:\n"
+                "            # | Inizio   | Fine     | Durata   | Motivo\n"
+                "          ----+----------+----------+----------+------------------------------\n"
+                "            1 | 18:10:00 | 18:25:00 | 00:15:00 | Telefonata\n"
+                "            2 | 19:30:00 | 19:45:00 | 00:15:00 | —\n\n"
+                "       2 | 21:10:00 | 21:40:30 | 00:25:30 | 00:05:00\n"
+                "          Obiettivo : Finire gli esercizi\n"
+                "          Esito     : non raggiunto\n"
+                "          Pause:\n"
+                "            # | Inizio   | Fine     | Durata   | Motivo\n"
+                "          ----+----------+----------+----------+------------------------------\n"
+                "            1 | 21:20:00 | 21:25:00 | 00:05:00 | Acqua\n\n"
+                "=========+==========+==========+==========+==========\n"
+                "Totale   |          |          | 03:25:30 | 00:35:00\n\n"
                 "Obiettivi raggiunti:\n"
                 "  - Completare il capitolo\n"
                 "Obiettivi non raggiunti:\n"
@@ -188,7 +258,7 @@ class FileOutputTests(unittest.TestCase):
             self.assertEqual(contents.count(cronometro.TABLE_HEADER), 1)
             self.assertTrue(
                 contents.endswith(
-                    "          | Esito: non specificato\n"
+                    "          Pause     : dettaglio non disponibile\n\n"
                 )
             )
 
@@ -242,7 +312,12 @@ class CommandFlowTests(unittest.TestCase):
             contents = path.read_text(encoding="utf-8")
             self.assertIn("Totale   |", contents)
             self.assertIn("Totale complessivo", contents)
-            self.assertIn("Motivo pausa: Caffè", contents)
+            self.assertIn("| Caffè", contents)
+            self.assertRegex(
+                contents,
+                r"\d{2}:\d{2}:\d{2} \| \d{2}:\d{2}:\d{2} \| "
+                r"\d+:\d{2}:\d{2} \| Caffè",
+            )
             self.assertIn("  - Scrivere il capitolo", contents)
             self.assertIn("  - Correggere gli esercizi", contents)
             self.assertIn(

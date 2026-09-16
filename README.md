@@ -32,9 +32,10 @@ Il cronometro attende `start`: il tempo impiegato prima di quel comando non cont
 All'apertura mostra il nome del programma con un'intestazione ASCII.
 
 Prima di avviare il conteggio, `start` richiede un obiettivo per la sessione. A
-ogni `pausa` puoi indicare facoltativamente il motivo dell'interruzione. `stop`,
-`completa` ed `esci` chiedono se l'obiettivo è stato raggiunto prima di salvare
-una sessione attiva.
+ogni `pausa` puoi indicare facoltativamente il motivo dell'interruzione. Il
+programma registra automaticamente anche l'orario di inizio, l'orario di fine e
+la durata di ogni singola pausa. `stop`, `completa` ed `esci` chiedono se
+l'obiettivo è stato raggiunto prima di salvare una sessione attiva.
 
 `stop` può essere usato più volte per registrare diverse sessioni senza riavviare
 il programma. Se usi `completa` mentre una sessione è in corso o in pausa, questa
@@ -84,17 +85,27 @@ per ogni carattere:
 Lunedì 14 Settembre 2026
 ========================
 
-Inizio   | Durata   | Pause    | Fine
----------+----------+----------+---------
-17:20:45 | 03:00:00 | 00:30:00 | 20:50:45
-          | Obiettivo: Completare il capitolo
-          | Esito: raggiunto
-          | Motivo pausa: Telefonata
-21:10:00 | 00:25:30 | 00:05:00 | 21:40:30
-          | Obiettivo: Correggere gli esercizi
-          | Esito: non raggiunto
-=========+==========+==========+=========
-Totale   | 03:25:30 | 00:35:00 |
+Sessione | Inizio   | Fine     | Lavoro   | Pause
+---------+----------+----------+----------+----------
+       1 | 17:20:45 | 20:50:45 | 03:00:00 | 00:30:00
+          Obiettivo : Completare il capitolo
+          Esito     : raggiunto
+          Pause:
+            # | Inizio   | Fine     | Durata   | Motivo
+          ----+----------+----------+----------+------------------------------
+            1 | 18:10:00 | 18:25:00 | 00:15:00 | Telefonata
+            2 | 19:30:00 | 19:45:00 | 00:15:00 | —
+
+       2 | 21:10:00 | 21:40:30 | 00:25:30 | 00:05:00
+          Obiettivo : Correggere gli esercizi
+          Esito     : non raggiunto
+          Pause:
+            # | Inizio   | Fine     | Durata   | Motivo
+          ----+----------+----------+----------+------------------------------
+            1 | 21:20:00 | 21:25:00 | 00:05:00 | Caffè
+
+=========+==========+==========+==========+==========
+Totale   |          |          | 03:25:30 | 00:35:00
 
 Obiettivi raggiunti:
   - Completare il capitolo
@@ -103,11 +114,16 @@ Obiettivi non raggiunti:
 Riepilogo finale: Capitolo completato; esercizi da riprendere domani.
 ```
 
-La tabella riporta ora di partenza, durata effettiva, pause totali e ora di fine,
-sempre con ore, minuti e secondi (`hh:mm:ss`). La durata effettiva esclude tutte
-le pause, mentre la colonna `Pause` ne riporta la durata complessiva. Le frazioni
-di secondo vengono troncate e le ore delle durate possono superare 99. L'ora di
-partenza e quella di fine sono invece orari del giorno, rilevati dal computer.
+La tabella assegna un numero progressivo a ogni sessione e separa chiaramente gli
+orari, il lavoro effettivo, l'obiettivo e il suo esito. Sotto ogni sessione
+elenca le singole pause con ora di inizio, ora di fine, durata e motivazione. Se
+la motivazione non è stata inserita mostra `—`; se non ci sono pause mostra
+`nessuna`.
+
+Tutte le durate usano ore, minuti e secondi (`hh:mm:ss`). La durata effettiva
+esclude le pause, mentre la colonna `Pause` ne riporta la somma. Le frazioni di
+secondo vengono troncate e le ore delle durate possono superare 99. Gli orari di
+inizio e fine sono invece rilevati dal computer.
 
 Il comando `completa` somma tutte le sessioni della data corrente e chiude la
 tabella con il totale del lavoro effettivo e delle pause. Aggiunge inoltre gli
@@ -176,10 +192,10 @@ test automatici dalla cartella del repository:
 python3 -m unittest discover -s tests
 ```
 
-I test verificano il conteggio e la somma delle pause, obiettivi ed esiti, motivi
-delle pause, visualizzazione in tempo reale, formato delle date e delle durate,
-struttura e chiusura della tabella, riepilogo complessivo, flusso dei comandi e
-assenza di intestazioni o totali duplicati.
+I test verificano il conteggio e la somma delle pause, i loro orari di inizio e
+fine, obiettivi ed esiti, motivi delle pause, visualizzazione in tempo reale,
+formato delle date e delle durate, struttura e chiusura della tabella, riepilogo
+complessivo, flusso dei comandi e assenza di intestazioni o totali duplicati.
 
 ## Licenza
 
